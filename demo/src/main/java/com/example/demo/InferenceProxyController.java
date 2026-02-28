@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.net.ConnectException;
 
 @RestController
 public class InferenceProxyController {
@@ -37,7 +38,7 @@ public class InferenceProxyController {
 
     public InferenceProxyController(
             ObjectMapper objectMapper,
-            @Value("${proxy.yolo.infer-url:http://127.0.0.1:5000/infer}") String yoloInferUrl,
+            @Value("${proxy.yolo.infer-url:http://inference.railway.internal:5000/infer}") String yoloInferUrl,
             @Value("${proxy.yolo.timeout-seconds:120}") long timeoutSeconds
     ) {
         this.objectMapper = objectMapper;
@@ -98,10 +99,17 @@ public class InferenceProxyController {
             return ResponseEntity.status(statusCode)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(jsonBody);
+        } catch (ConnectException connectEx) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
+                    "error", "Could not connect to YOLO service",
+                    "detail", safeMessage(connectEx),
+                    "upstream_url", yoloInferUrl
+            ));
         } catch (IOException ioEx) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "error", "Could not read uploaded image",
-                    "detail", safeMessage(ioEx)
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
+                    "error", "Proxy I/O failure while forwarding to YOLO service",
+                    "detail", safeMessage(ioEx),
+                    "upstream_url", yoloInferUrl
             ));
         } catch (InterruptedException interruptedEx) {
             Thread.currentThread().interrupt();
